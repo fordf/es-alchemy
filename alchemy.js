@@ -576,7 +576,8 @@ function onIngredFormChange(e) {
     }, 100);
 }
 
-function onEffectsJSONFormSubmit() {
+function onEffectsJSONFormSubmit(e) {
+    e.preventDefault()
     let old = effectsToIngreds;
     effectsToIngreds = JSON.parse(effectsJSONForm.querySelector('textarea').value)
     ingredsToEffects = flipStringListDict(effectsToIngreds)
@@ -589,7 +590,8 @@ function onEffectsJSONFormSubmit() {
     update()
 }
 
-function onIngredsJSONFormSubmit() {
+function onIngredsJSONFormSubmit(e) {
+    e.preventDefault()
     let old = ingredsToEffects;
     ingredsToEffects = JSON.parse(ingredsJSONForm.querySelector('textarea').value)
     effectsToIngreds = flipStringListDict(ingredsToEffects)
@@ -601,7 +603,6 @@ function onIngredsJSONFormSubmit() {
     Object.keys(ingredsToEffects).forEach(updateIngred)
     update()
 }
-
 
 function deleteIngred(ingred) {
     if (!confirm(`Delete ${ingred}?`)) return;
