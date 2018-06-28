@@ -7,18 +7,17 @@ let tableRows = i => Array.from(document.querySelectorAll(`table:nth-of-type(${i
     specialIngredRows = tableRows(3);
 let ingreds = Array.from(commonIngredRows).reduce((d, row, i) => {
     if (i % 2) {
-        let effectLinks = Array.from(row.querySelectorAll('td > a:first-child')).slice(0,4)
-        let effects = effectLinks.map(link => link.title)
-        d[ingred] = effects
+        d[ingred] = Array.from(row.querySelectorAll('td:nth-child(n-4) > a:nth-child(2)'))
+                         .map(link => link.innerText)
     } else {
-        ingred = row.querySelector('td:nth-child(2) > a').title.split(':')[1]
+        ingred = row.querySelector('td:nth-child(2) > a').innerText
     }
     return d
-}, 
+},
     Array.from(specialIngredRows).reduce((d, row, i) => {
         if (i % 2) return d;
-		ingred = row.querySelector('td:nth-child(2)>b>span').id.replace(/.27/g, "'").replace(/_/g, ' ');
-        d[ingred] = Array.from(row.querySelectorAll(`td:nth-child(n+5)>a:first-child`)).map(a => a.title);
+        ingred = row.querySelector('td:nth-child(2)>b>a').innerText;
+        d[ingred] = Array.from(row.querySelectorAll(`td:nth-child(n+5)>a:nth-child(2)`)).map(a => a.innerText);
         return d;
-    }, {})                                               
+    }, {})
 );
