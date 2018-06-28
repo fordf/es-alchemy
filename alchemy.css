@@ -1,0 +1,70 @@
+body {
+    background-color: #FBEFD5;
+}
+.column-4 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, 248px);
+}
+.column-4 > div {
+    box-sizing: border-box;
+    position: relative;
+    border-width: 4px;
+    border-color: pink;
+    border-style: solid;
+    padding: 10px;
+    padding-bottom: 40px;
+    min-width: 228px;
+    margin: 1px;
+}
+.column-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 50%);
+}
+.column-4 > div > h4 {
+    display: inline-block;
+}
+.column-4 > div > img {
+    float: right;
+}
+.column-4 > div > ul > li > button {
+    float: right;
+}
+.ingred-selector {
+    opacity: 0.59;
+    position: absolute;
+    bottom: 20px;
+}
+.ingred-selector:hover {
+    opacity: 1;
+}
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 200px);
+}
+div {
+    padding: 10px;
+    border: 2px outset #a99889;
+}
+.grid > div.selected {
+    background-color: pink;
+    border-style: inset;
+}
+#info {
+    display: none;
+    position: absolute;
+    background: white;
+    z-index: 10;
+}
+hr {
+    border: 5px inset #345;
+    margin: 30px 0;
+}
+div > ul > li {
+    /*display: inline-block;*/
+    /*float: left;*/
+}
+
+#merchant-form > div > ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 180px);
+}

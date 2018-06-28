@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Elder Scrolls Alchemy</title>
+    <link rel="stylesheet" type="text/css" href="alchemy.css">
+</head>
+<body>
+
+    <h1>Potion Maker</h1>
+    <div id="potion-maker">
+        <div class="grid"></div>
+        <div></div>
+        <button>Clear Selections</button>
+    </div>
+    <hr>
+    <h1>Effects</h1>
+    <form class="column-4" id="effects-to-ingredients-form"></form>
+    <hr>
+    <h1>Ingredients</h1>
+    <button type="button" id="new-ingredient">New</button>
+    <form class="column-4" id="ingredients-to-effects-form"></form>
+    <hr>
+    <h1>Merchants</h1>
+    <button id="new-merchant-button">New Merchant</button>
+    <form class="column-2" id="merchant-form"></form>
+
+    <br>
+    <hr>
+    <form id="effect-to-ingreds-json-form">
+        <h3>Input {"Restore Fatigue": ["Saltrice", ...], ...} JSON</h3>
+        <textarea></textarea>
+        <button>Submit</button>
+    </form>
+    <form id="ingred-to-effects-json-form">
+        <h3>Input {"Saltrice": ["Restore Fatigue", ...], ...} JSON</h3>
+        <textarea></textarea>
+        <button>Submit</button>
+    </form>
+    <div id="info"></div>
+    <script type="text/javascript" src="alchemy.js"></script>
+    <datalist id="ingreds"></datalist>
+    <datalist id="effects"></datalist>
+    <datalist id="merchants"></datalist>
+</body>
+</html>
