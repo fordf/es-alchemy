@@ -68,7 +68,3 @@ div > ul > li {
     display: grid;
     grid-template-columns: repeat(auto-fill, 180px);
 }
-
-.node {
-    cursor: pointer;
-}

@@ -1,4 +1,6 @@
-var effectsToIngredsForm,
+var effectsToIngreds,
+    ingredsToEffects,
+    effectsToIngredsForm,
     ingredsToEffectsForm,
     effectsDataList,
     ingredsDataList,
@@ -16,11 +18,10 @@ var effectsToIngredsForm,
     merchantIngredients,
     merchantForm,
     newMerchantButton,
-    alchemy,
+    MIGraph,
     infoBox,
     newIngredButton;
 
-const log = console.log
 var negativeEffectsFiltered = true;
 
 var effectsUrls = {
@@ -120,29 +121,6 @@ for (let e of Object.keys(effectsUrls)) {
     if (e.startsWith("Levitate") || e.startsWith('Detect') || e.startsWith('Water')) COLORS[e] = "purple";
 }
 
-class SortedIngredDataListArray {
-    constructor(...args) {
-        if (args.length == 1 && Array.isArray(args[0])) {
-            this.array = args[0]
-        } else {
-            this.array = Array.from(args)
-        }
-        ingredsDataList.innerHTML = this.array.map(optionize).join('')
-        Object.getOwnPropertyNames(Array.prototype).forEach(prop => this[prop] = (...as) => Array.prototype[prop].apply(this.array, as))
-    }
-    insert(item) {
-        const array = this.array
-        const [afterValue, afterIndex] = findNextBiggest(array, item);
-        ingredsDataList.insertBefore(makeOption(item), ingredsDataList.childNodes[afterIndex])
-        this.array = array.slice(0, afterIndex).concat([item]).concat(array.slice(afterIndex))
-    }
-}
-
-class MyMap extends Object {
-    map(f) {
-        Object.entries(this).map(...args => f(...args))
-    }
-}
 
 class FullyConnectedNode {
     constructor(type, name) {
@@ -154,85 +132,61 @@ class FullyConnectedNode {
 
     all() {
         return this.connTypes.reduce((dict, type) => {
-            dict[type] = Object.keys(this[type]);
+            dict[type] = this[type];
             return dict;
         }, {})
     }
 }
 
-class Graph extends Object {
-    constructor(relations={}) {
-        super()
-        this.update(relations)
+class MerchantIngredEffectGraph {
+    constructor(effectsToIngreds=null, merchantsToIngredients=null) {
+        this.effects = {};
+        this.ingreds = {};
+        this.merchants = {};
+        Object.entries(effectsToIngreds || {}).forEach(([e, ings]) => {
+            ings.forEach(i => this.connect('effects', e, 'ingreds', i))
+        })
+        Object.entries(merchantIngredients || {}).forEach(([m, ings]) => {
+            ings.forEach(i => this.connect('merchants', m, 'ingreds', i))
+        })
     }
 
     add(type, name) {
-        if (!(type in this)) this[type] = {};
-        else if (name in this[type]) return;
+        if (name in this[type]) return;
         this[type][name] = new FullyConnectedNode(type, name)
     }
 
-    connect(rootType, rootName, relatedType, relatedName, add=true) {
-        if (add) this.add(rootType, rootName);
-        this.add(relatedType, relatedName);
-        const rootNode = this[rootType][rootName];
-        const relatedNode = this[relatedType][relatedName];
-        const exists = relatedName in rootNode[relatedType];
-        rootNode[relatedType][relatedName] = relatedNode;
-        relatedNode[rootType][rootNode] = rootNode;
-        return !exists;
-    }
-
-    update(relations) {
-        entries(relations).forEach(([rootType, relationDict]) => {
-            log(rootType)
-            if (!(rootType in this)) this[rootType] = {};
-            entries(relationDict).forEach(([relatedType, innerRelations]) => {
-                log('\t'+relatedType)
-                if (!(relatedType in this)) this[relatedType] = {};
-                entries(innerRelations).forEach(([rootNode, relatedToNodes]) => {
-                    log(rootNode, relatedToNodes)
-                    this.add(rootType, rootNode);
-                    relatedToNodes.forEach(node => this.connect(rootType, rootNode, relatedType, node, false));
-                })
-            })
-        })
-    }
-    jsonify(type) {
-        Object.entries(this[type])
-    }
-}
-
-function entries(x) {
-    return Array.isArray(x) ? x : Object.entries(x || {})
-}
-
-class AlchemyGraph extends Graph {
-    connect(rootType, rootName, relatedType, relatedName) {
-        let created = super.connect(rootType, rootName, relatedType, relatedName);
-        const special = [rootType, relatedType];
+    connect(nodeType, rootNodeName, connectionType, connectNodeName) {
+        if (!(rootNodeName in this[nodeType])) this.add(nodeType, rootNodeName);
+        if (!(connectNodeName in this[connectionType])) this.add(connectionType, connectNodeName);
+        const rootNode = this[nodeType][rootNodeName];
+        const connectNode = this[connectionType][connectNodeName];
+        rootNode[connectionType][connectNodeName] = connectNode;
+        connectNode[nodeType][rootNodeName] = rootNode;
+        const special = [nodeType, connectionType]
         if (special.includes('ingreds') && special.includes('merchants')) {
-            const merchantNode = [rootNode, relatedNode][special.indexOf('merchants')];
-            const merchantEffects = matchingEffects(Object.keys(merchantNode.ingreds));
-            merchantEffects.forEach(([eff, ings]) => this.connect('merchants', merchantNode.name, 'effects', eff));
+            const merchantNode = [rootNode, connectNode][[nodeType, connectionType].indexOf('merchants')]
+            const merchantEffects = matchingEffects(Object.keys(merchantNode.ingreds)).map(x => x[0])
+            merchantEffects.forEach(eff => this.connect('merchants', merchantNode.name, 'effects', eff))
         }
-        return created;
     }
 }
 
-selectedIngredients = new Set(JSON.parse(localStorage.getItem('selectedIngredients')));
+
 document.addEventListener("DOMContentLoaded", onLoad);
 
+
 function onLoad() {
-    // ingredsToEffects = flipStringListDict(effectsToIngreds);
-    const effectsToIngreds = ensureStrListObj(JSON.parse(localStorage.getItem('effectsToIngreds')), Object.keys(effectsUrls));
-    const merchantIngredients = ensureStrListObj(JSON.parse(localStorage.getItem('merchantIngredients')));
-    alchemy = new AlchemyGraph(
-        {
-            'effects': {'ingreds': effectsToIngreds},
-            'merchants': {'ingreds': merchantIngredients}
-        }
+    selectedIngredients = new Set(JSON.parse(localStorage.getItem('selectedIngredients')))
+    effectsToIngreds = ensureStrListDict(
+        JSON.parse(localStorage.getItem('effectsToIngreds')),
+        Object.keys(effectsUrls)
     );
+    merchantIngredients = ensureStrListDict(
+        JSON.parse(localStorage.getItem('merchantIngredients')));
+    ingredsToEffects = flipStringListDict(effectsToIngreds);
+    MIGraph = new MerchantIngredEffectGraph(effectsToIngreds, merchantIngredients);
+    sortedIngredients = Object.keys(ingredsToEffects).sort();
     effectsToIngredsForm = document.getElementById("effects-to-ingredients-form");
     ingredsToEffectsForm = document.getElementById("ingredients-to-effects-form");
     effectsDataList = document.getElementById('effects');
@@ -248,18 +202,17 @@ function onLoad() {
     newMerchantButton = document.getElementById('new-merchant-button');
     infoBox = document.getElementById('info');
 
-    sortedIngredients = new SortedIngredDataListArray(Object.keys(alchemy.ingreds).sort());
-
-    merchantsDataList.innerHTML = Object.keys(alchemy.merchants).map(optionize).join('');
+    merchantsDataList.innerHTML = Object.keys(MIGraph.merchants).map(optionize).join('');
     merchantSelector = document.createElement('input');
     merchantSelector.setAttribute('type', 'text');
     merchantSelector.setAttribute('list', 'merchants');
 
-    effectsDataList.innerHTML = Object.keys(alchemy.effects).map(optionize).join('');
+    effectsDataList.innerHTML = Object.keys(MIGraph.effects).map(optionize).join('');
     effectSelector = document.createElement('input');
     effectSelector.setAttribute('type', 'text');
     effectSelector.setAttribute('list', 'effects');
 
+    ingredsDataList.innerHTML = Object.keys(MIGraph.ingreds).map(optionize).join('');
     ingredSelector = document.createElement('input')
     ingredSelector.setAttribute('type', 'text');
     ingredSelector.setAttribute('list', 'ingreds');
@@ -291,7 +244,7 @@ function onLoad() {
 }
 
 function onClick(e) {
-    if (!e.target.classList.contains('node')) {
+    if (!e.target.hasAttribute('hover')) {
         hideInfo();
         return;
     }
@@ -302,7 +255,8 @@ function onClick(e) {
         return;
     }
     item = e.target.dataset[type]
-    connections = alchemy[type][item].all();
+    connections = MIGraph[type][item].all();
+    console.log(e.pageX, e.pageY)
     showInfo(e.pageX, e.pageY, item, connections)
 }
 
@@ -316,7 +270,7 @@ function showInfo(x, y, item, connections) {
     infoBox.style.top = y + 'px'
     infoBox.innerHTML = `<h5>${item}</h5>` +
         Object.entries(connections).map(([type, items]) => `<h6>${type}</h6><ul>` +
-            items.map(i => `<li>${i}</li>`).join('') + '</ul>').join('');
+            Object.keys(items).map(i => `<li>${i}</li>`).join('') + '</ul>').join('');
     infoBox.style.display = 'block';
 }
 
@@ -344,7 +298,6 @@ function addPotionIngredDiv(ingred) {
         updatePotionMaker();
     })
     let [afterValue, afterIndex] = findNextBiggest((sortedIngredients || []), ingred);
-    console.log('addPotionIngredDiv', potionIngredsDiv.querySelector(`div[data-ingreds="${afterValue}"]`), potionIngredsDiv.childNodes[afterIndex])
     potionIngredsDiv.insertBefore(div, potionIngredsDiv.querySelector(`div[data-ingreds="${afterValue}"]`));
 }
 
@@ -374,10 +327,10 @@ function onMerchantFormChange(e) {
     const parent = e.target.parentElement;
     let ingred = e.target.value;
     let merchant = e.target.dataset.merchants;
-    if (!(ingred in alchemy.ingreds)) {
+    if (!(ingred in MIGraph.ingreds)) {
         if (!confirm('add new ' + ingred)) return;
         sortedIngredients = insertSorted(sortedIngredients, ingred)
-        alchemy.add('ingreds', ingred)
+        MIGraph.add('ingreds', ingred)
         insertNewIngredient(ingred);
     }
     if (!(ingred in merchantIngredients[merchant])) {
@@ -389,6 +342,8 @@ function onMerchantFormChange(e) {
         150
     )
 }
+
+
 
 function newMerchant() {
     let input = merchantSelector
@@ -419,7 +374,6 @@ function newMerchant() {
 function insertNewMerchant(merchant) {
     let merchantDiv = makeMerchantDiv(merchant)
     let [afterValue, afterIndex] = findNextBiggest(Object.keys(merchantIngredients).sort(), merchant);
-    console.log('insertNewMerchant', merchantForm.querySelector(`div[data-ingreds="${afterValue}"]`), merchantForm.childNodes[afterIndex])
     merchantForm.insertBefore(merchantDiv, merchantForm.querySelector(`div[data-ingreds="${afterValue}"]`));
 }
 
@@ -429,6 +383,7 @@ function makeMerchantDiv(merchant) {
     ingredSelectorClone.setAttribute('data-merchants', merchant);
     merchantDiv.setAttribute('data-merchants', merchant);
     let foundEffects = matchingEffects(merchantIngredients[merchant]);
+    console.log(ingredSelectorClone.outerHTML)
     merchantDiv.innerHTML = `<h3>${merchant}</h3><h4>Ingredients</h4><ul>` +
         merchantIngredients[merchant].map(i =>
             `<li>${i} <button type="button" onclick="deleteMI('${merchant}', '${i}')">X</button></li>`).join('') +
@@ -452,7 +407,7 @@ function deleteMI(merchant, ingred) {
 
 function matchingEffects(ingreds) {
     return Object.entries(Array.from(ingreds).reduce((foundEffects, ingred) => {
-        alceingreds.forEach(e => {
+        ingredsToEffects[ingred].forEach(e => {
             if (e in foundEffects) {
                 foundEffects[e].push(ingred);
             } else if (isPositive(e)) {
@@ -489,66 +444,64 @@ function flipStringListDict(strListDict) {
     }, {});
 }
 
-function makeOption(item) {
-    const option = document.createElement('option');
-    option.setAttribute('value', item);
-    return option;
-}
-
-const optionize = e => `<option value="${e}">${e}</option>`;
-const makeRelationListItem = (type, item, related_to) => `<li><span class="node" data-${type}="${item}">${item}</span><button type="button" onclick="removeIEPair('${item}', '${related_to}')">X</button></li>`
+var optionize = e => `<option value="${e}">${e}</option>`;
 
 function updateEffect(effect) {
     effectUL = effectsToIngredsForm.querySelector(`div[data-effects="${effect}"] > ul`);
-    effectUL.innerHTML = alchemy.effects[effect].ingreds.map(ingred => makeRelationListItem('ingreds', ingred, effect)).join('')
+    effectUL.innerHTML = effectsToIngreds[effect].map(
+        ingred => `<li hover data-ingreds="${ingred}">${ingred} <button type="button" onclick="removeIEPair('${ingred}', '${effect}')">X</button></li>`
+    ).join('')
 }
 
 function updateIngred(ingred) {
-    ingredUL = ingredsToEffectsForm.querySelector(`div[data-ingreds="${ingred}"] > ul`);
-    ingredUL.innerHTML = alchemy.ingreds[ingred].effects.map(effect => makeRelationListItem('effects', effect, ingred))
+    ingredsDataList.innerHTML = sortedIngredients.map(optionize).join('');
+    ingredsToEffectsForm.replaceChild(
+        makeIngredDiv(ingred),
+        ingredsToEffectsForm.querySelector(`div[data-ingreds="${ingred}"]`));
+}
+
+
+function updateIngred(ingred) {
+    ingredsDataList.innerHTML = sortedIngredients.map(optionize).join('');
+    ingredsToEffectsForm.replaceChild(
+        makeIngredDiv(ingred),
+        ingredsToEffectsForm.querySelector(`div[data-ingreds="${ingred}"]`));
 }
 
 function update(...things) {
     for (let thing of things) {
-        thing in effectsUrls ? updateEffect(thing) : updateIngred(thing);
+        if (thing in effectsUrls) updateEffect(thing);
+        else updateIngred(thing);
     }
+    // if (effect) updateEffect(effect);
+    // if (ingred) updateIngred(ingred);
     localStorage.setItem('effectsToIngreds', JSON.stringify(effectsToIngreds));
 }
 
 function makeEffectDiv(effect) {
-    const effectDiv = document.createElement("div");
-    const ingredSelectorClone = ingredSelector.cloneNode(true)
+    let effectDiv = document.createElement("div");
+    if (COLORS[effect]) effectDiv.style.borderColor = COLORS[effect];
+    effectDiv.innerHTML = `<h4 hover data-effects="${effect}">${effect}</h4>` +
+    // `<img src="${effectsUrls[effect]}" />` +
+     `<ul>` +
+    effectsToIngreds[effect].map(ingred => `<li hover data-ingreds="${ingred}">${ingred} <button type="button" onclick="removeIEPair('${ingred}', '${effect}')">X</button></li>`).join('') + '</ul>'
+    ingredSelectorClone = ingredSelector.cloneNode(true)
     ingredSelectorClone.setAttribute('class', 'ingred-selector')
     effectDiv.setAttribute('data-effects', effect)
-    if (COLORS[effect]) effectDiv.style.borderColor = COLORS[effect];
-    effectDiv.innerHTML = `<h4 class="node" data-effects="${effect}">${effect}</h4>` +
-        // `<img src="${effectsUrls[effect]}" />` +
-        `<ul>` + effectsToIngreds[effect].map(ingred => makeRelationListItem('ingreds', ingred, effect)).join('') + 
-        `<li>${ingredSelectorClone.outerHTML}</li></ul>`
+    effectDiv.appendChild(ingredSelectorClone);
     return effectDiv;
 }
 
 function makeIngredDiv(ingred) {
-    const ingredDiv = document.createElement("div");
-    const effectSelectorClone = effectSelector.cloneNode(true)
+    let ingredDiv = document.createElement("div");
+    let effectSelectorClone = effectSelector.cloneNode(true)
     effectSelectorClone.setAttribute('data-ingreds', ingred);
     ingredDiv.setAttribute('data-ingreds', ingred);
-    ingredDiv.innerHTML = `<h4 class="node" data-ingreds="${ingred}">${ingred}</h4><ul>` +
-        Object.keys(alchemy.ingreds[ingred].effects).map(effect => makeRelationListItem('effects', effect, ingred)).join('') +
+    ingredDiv.innerHTML = `<h4 hover data-ingreds="${ingred}">${ingred}</h4><ul>` +
+        ingredsToEffects[ingred].map(effect =>
+            `<li><span hover data-effects="${effect}">${effect}</span><button type="button" onclick="removeIEPair('${ingred}', '${effect}')">X</button></li>`).join('') +
         `<li>${effectSelectorClone.outerHTML}</li></ul>` +
         `<button type="button" onclick="deleteIngred('${ingred}')">x</button>`
-    return ingredDiv;
-}
-
-function makeIngredDivAlt(ingred) {
-    const ingredDiv = document.createElement("div");
-    const effectSelectorClone = effectSelector.cloneNode(true)
-    effectSelectorClone.setAttribute('data-ingreds', ingred);
-    ingredDiv.setAttribute('data-ingreds', ingred);
-    ingredDiv.innerHTML = `<h4 class="node" data-ingreds="${ingred}">${ingred}</h4><ul>` +
-        Object.keys(alchemy.ingreds[ingred].effects).map(effect => makeRelationListItem('effects', effect, ingred)).join('') + '</ul>' +
-        `<button type="button" onclick="deleteIngred('${ingred}')">x</button>`
-    ingredDiv.querySelector('ul').appendChild(effectSelectorClone)
     return ingredDiv;
 }
 
@@ -556,7 +509,6 @@ function insertNewIngredient(ingred) {
     addPotionIngredDiv(ingred)
     let ingredDiv = makeIngredDiv(ingred)
     let [afterValue, afterIndex] = findNextBiggest((sortedIngredients || []), ingred);
-    console.log('insertNewIngredient', ingredsToEffectsForm.querySelector(`div[data-ingreds="${afterValue}"]`), ingredsToEffectsForm.childNodes[afterIndex])
     ingredsToEffectsForm.insertBefore(ingredDiv, ingredsToEffectsForm.querySelector(`div[data-ingreds="${afterValue}"]`));
 }
 
@@ -568,9 +520,9 @@ function newIngredient() {
     newIngredButton.removeEventListener('click', newIngredient);
     let onSubmitNewIngred = () => {
         let ingred = input.value;
-        if (!(ingred in alchemy.ingreds)) {
+        if (!(ingred in ingredsToEffects)) {
             sortedIngredients = insertSorted(sortedIngredients, ingred)
-            alchemy.ingreds[ingred].effects = [];
+            ingredsToEffects[ingred] = [];
             insertNewIngredient(ingred);
             setTimeout(
                 () => ingredsToEffectsForm.querySelector(`div[data-ingreds="${ingred}"] input`).focus(),
@@ -588,15 +540,22 @@ function newIngredient() {
 function onEffectFormChange(e) {
     let ingred = e.target.value;
     let effect = e.target.parentElement.firstChild.innerText;
-    alchemy.connect('ingred', ingred, 'effect', effect)
-    update(effect, ingred);
+    if (!(ingred in effectsToIngreds[effect])) {
+        if (!(ingred in ingredsToEffects)) {
+            sortedIngredients = insertSorted(sortedIngredients, ingred)
+            ingredsToEffects[ingred] = [];
+            insertNewIngredient(ingred);
+        }
+        effectsToIngreds[effect] = insertSorted(effectsToIngreds[effect], ingred);
+        ingredsToEffects[ingred] = insertSorted(ingredsToEffects[ingred], effect);
+        update(effect, ingred);
+    }
 }
 
-const removeIEPair = (x, y) => {
-    [ingred, effect] = x in alchemy.ingreds ? [x, y] : [y, x]
-    alchemy.ingreds[ingred].effects = alchemy.ingreds[ingred].effects.filter(i => i != effect)
-    effectsToIngreds[effect] = effectsToIngreds[effect].filter(i => i != ingred)
-    update(ingred, effect)
+const removeIEPair = (ing, eff) => {
+    ingredsToEffects[ing] = ingredsToEffects[ing].filter(i => i != eff)
+    effectsToIngreds[eff] = effectsToIngreds[eff].filter(i => i != ing)
+    update(ing, eff)
 }
 
 function onIngredFormChange(e) {
@@ -607,7 +566,10 @@ function onIngredFormChange(e) {
         e.target.focus();
         return;
     }
-    alchemy.connect('effect', effect, 'ingred', ingred)
+    if (!(effect in ingredsToEffects[ingred])) {
+        ingredsToEffects[ingred] = insertSorted(ingredsToEffects[ingred], effect);
+        effectsToIngreds[effect] = insertSorted(effectsToIngreds[effect], ingred);
+    }
     update(effect, ingred);
     setTimeout(() => {
         ingredsToEffectsForm.querySelector(`div[data-ingreds="${ingred}"] input`).focus();
@@ -625,7 +587,6 @@ function onEffectsJSONFormSubmit(e) {
     })
     Object.keys(effectsToIngreds).forEach(updateEffect)
     Object.keys(ingredsToEffects).forEach(updateIngred)
-    ingredsDataList.innerHTML = sortedIngredients.map(optionize).join('');
     update()
 }
 
@@ -634,7 +595,6 @@ function onIngredsJSONFormSubmit(e) {
     let old = ingredsToEffects;
     ingredsToEffects = JSON.parse(ingredsJSONForm.querySelector('textarea').value)
     effectsToIngreds = flipStringListDict(ingredsToEffects)
-    alchemy.update({'ingreds': {'effects': ingredsToEffects}})
     Object.keys(ingredsToEffects).filter(i => !(i in old)).forEach(i => {
         sortedIngredients = insertSorted(sortedIngredients, i)
         insertNewIngredient(i)
@@ -656,12 +616,12 @@ function deleteIngred(ingred) {
         }
     }, effectsToIngreds);
     update()
-    delete alchemy.ingreds[ingred].effects;
+    delete ingredsToEffects[ingred];
     ingredsToEffectsForm.querySelector(`div[data-ingreds="${ingred}"]`).remove()
     sortedIngredients.pop(sortedIngredients.indexOf(ingred))
 }
 
-function ensureStrListObj(potentialDict, keys=[]) {
+function ensureStrListDict(potentialDict, keys=[]) {
     if (!potentialDict) {
         potentialDict = keys.reduce((acc, effect) => {
             acc[effect] = [];
